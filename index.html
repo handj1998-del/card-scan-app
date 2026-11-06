@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>카드 인식</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header><h1>카드 인식</h1><p class="sub">카메라로 카드 앞면을 비추면 번호·유효기간·이름을 읽어 드립니다.</p></header>
+
+  <section id="intro" class="panel">
+    <p>카드 앞면을 읽기 위해 <b>카메라 권한</b>이 필요합니다.</p>
+    <p class="privacy">🔒 인식은 <b>이 기기 안에서만</b> 이루어지며, 카드 정보와 이미지는 어디에도 업로드·저장되지 않습니다. 새로고침하면 결과가 사라집니다.</p>
+    <button id="start" class="btn primary">카메라 시작</button>
+  </section>
+
+  <section id="scanner" class="panel hidden">
+    <div class="viewport">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="frame"><span></span></div>
+    </div>
+    <p id="status" class="status">카드를 틀 안에 맞춰 주세요</p>
+    <div class="row">
+      <button id="capture" class="btn primary">지금 촬영</button>
+      <button id="stop" class="btn">중지</button>
+    </div>
+  </section>
+
+  <section id="result" class="panel hidden">
+    <div class="ccard">
+      <div class="brand" id="rBrand">-</div>
+      <div class="pan" id="rPan">-</div>
+      <div class="meta"><div><small>유효기간</small><span id="rExp">-</span></div><div><small>이름</small><span id="rName">-</span></div></div>
+    </div>
+    <p class="hint">인식 결과가 맞는지 확인해 주세요. CVC(뒷면)는 묻지 않습니다.</p>
+    <div class="row">
+      <button id="toggle" class="btn">번호 가리기</button>
+      <button id="retry" class="btn primary">다시 인식</button>
+    </div>
+  </section>
+
+  <p id="error" class="error hidden"></p>
+
+  <footer>이 도구는 인식 보조 도구일 뿐이며 결제를 처리하지 않습니다. 카드 정보는 서버로 전송되지 않습니다.</footer>
+</main>
+<canvas id="canvas" hidden></canvas>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+services:
+  - type: web
+    runtime: static
+    name: card-scan-app
+    buildCommand: echo static
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(self)
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
