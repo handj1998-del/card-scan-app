@@ -1,31 +1,40 @@
-// Client-side only. No network requests, no storage. Data lives in memory until refresh.
-(() => {
-  const $ = id => document.getElementById(id), f = $('f'), c = $('sig'), ctx = c.getContext('2d');
-  let drawn = false, drawing = false;
-  f.date.value = new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
-  function fit() { const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1; const img = drawn ? c.toDataURL() : null;
-    c.width = r.width * dpr; c.height = r.height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.lineWidth = 2.5; ctx.lineCap = ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
-    if (img) { const im = new Image(); im.onload = () => ctx.drawImage(im, 0, 0, r.width, r.height); im.src = img; } }
-  fit(); window.addEventListener('resize', fit);
-  const pt = e => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-  c.addEventListener('pointerdown', e => { drawing = true; c.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...pt(e)); });
-  c.addEventListener('pointermove', e => { if (!drawing) return; ctx.lineTo(...pt(e)); ctx.stroke(); drawn = true; });
-  ['pointerup', 'pointercancel'].forEach(t => c.addEventListener(t, () => drawing = false));
-  $('clear').onclick = () => { ctx.clearRect(0, 0, c.width, c.height); drawn = false; };
-  f.pan.addEventListener('input', () => { f.pan.value = f.pan.value.replace(/\D/g, '').slice(0, 19).replace(/(\d{4})(?=\d)/g, '$1 '); });
-  f.exp.addEventListener('input', () => { let v = f.exp.value.replace(/\D/g, '').slice(0, 4); f.exp.value = v.length > 2 ? v.slice(0, 2) + '/' + v.slice(2) : v; });
-  function luhn(n) { let s = 0, d = false; for (let i = n.length - 1; i >= 0; i--) { let x = +n[i]; if (d) { x *= 2; if (x > 9) x -= 9; } s += x; d = !d; } return s % 10 === 0; }
-  const err = t => { $('err').textContent = t; $('err').classList.toggle('hidden', !t); };
-  f.addEventListener('submit', e => {
-    e.preventDefault(); err('');
-    const pan = f.pan.value.replace(/\D/g, '');
-    if (pan.length < 13 || !luhn(pan)) return err('카드 번호를 확인해 주세요. · Please check the card number.');
-    if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(f.exp.value)) return err('유효기간을 MM/YY 형식으로 입력해 주세요. · Enter expiry as MM/YY.');
-    if (!drawn) return err('서명해 주세요. · Please sign.');
-    for (const k of ['biz', 'cust', 'contact', 'holder', 'exp', 'purpose', 'date']) $('d_' + k).textContent = f[k].value;
-    $('d_pan').textContent = f.pan.value; $('d_sig').src = c.toDataURL('image/png');
-    $('formView').classList.add('hidden'); $('docView').classList.remove('hidden'); scrollTo(0, 0);
-  });
-  $('edit').onclick = () => { $('docView').classList.add('hidden'); $('formView').classList.remove('hidden'); };
-  $('print').onclick = $('pdf').onclick = () => window.print();
-})();
+'use strict';
+// No form values leave this page. No storage, network submission, or analytics.
+const W=725,H=1024;
+const fields=[],choices=[],signatures=[];
+function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function position(el,x,y,w,h){Object.assign(el.style,{left:`${x/W*100}%`,top:`${y/H*100}%`,width:`${w/W*100}%`,height:`${h/H*100}%`});}
+function field(page,label,x,y,w,h,type='text',value=''){
+ const el=document.createElement('input');el.type=type;el.value=value;el.className='field';el.setAttribute('aria-label',label);el.autocomplete='off';el.spellcheck=false;el.maxLength=type==='date'?10:80;
+ if(label==='카드번호'){el.inputMode='numeric';el.maxLength=23;}if(label==='유효기간 MM/YYYY'){el.placeholder='MM/YYYY';el.maxLength=7;el.inputMode='numeric';}
+ position(el,x,y,w,h);document.getElementById(`page${page}`).append(el);fields.push({page,label,x,y,w,h,el});return el;
+}
+field(1,'예약번호',192,225,169,17);field(1,'임차인 이름',192,244,169,16);field(1,'이메일',192,263,169,16,'email');field(1,'전화번호',192,284,169,45,'tel');
+const cardType=field(1,'카드 종류 Debit / Credit',492,207,171,16);cardType.placeholder='Debit / Credit';
+field(1,'카드사',492,225,171,17);field(1,'카드번호',492,244,171,34);field(1,'유효기간 MM/YYYY',492,286,171,40);field(1,'확인 및 동의 이름',84,791,192,20);field(1,'1쪽 서명 날짜',503,886,157,22,'date',today());
+function signature(page,label,x,y,w,h){const el=document.createElement('button');el.type='button';el.className='signature';el.textContent='터치하여 서명';el.setAttribute('aria-label',label);position(el,x,y,w,h);document.getElementById(`page${page}`).append(el);const item={page,label,x,y,w,h,el,image:null};signatures.push(item);el.onclick=()=>openSignature(item);}
+signature(1,'1쪽 하단 서명',346,886,127,22);
+// Seven original agreement blocks, three people per block, two mutually exclusive choices.
+const blocks=[{x:198,n:259,ys:[412,422,432],label:'마케팅 목적 정보 수집·이용 선택'},{x:198,n:259,ys:[465,475,485],label:'마케팅 목적 정보 수집·이용 선택 2'},{x:198,n:259,ys:[808,818,828],label:'개인정보 수집·이용 필수'},{x:198,n:259,ys:[850,860,870],label:'고유식별정보 수집·이용'},{x:198,n:259,ys:[896,906,916],label:'개인정보 수집·이용 필수 2'},{x:499,n:559,ys:[461,471,481],label:'개인정보 제3자 제공'},{x:499,n:559,ys:[508,518,528],label:'고유식별정보 제3자 제공'}];
+const people=['임차인','추가 운전자 1','추가 운전자 2'];
+blocks.forEach((b,i)=>b.ys.forEach((y,r)=>{for(const [value,x] of [['Agree',b.x],['Not agree',b.n]]){const el=document.createElement('input');el.type='radio';el.name=`consent-${i}-${r}`;el.value=value;el.className='choice';el.setAttribute('aria-label',`${b.label} · ${people[r]} · ${value==='Agree'?'동의':'미동의'}`);position(el,x-3,y-4,9,9);document.getElementById('page2').append(el);choices.push({page:2,x:x-3,y:y-4,w:9,h:9,el});}}));
+for(let i=0;i<3;i++){const y=655+i*68;field(2,`${people[i]} 날짜`,467,y,96,20,'date',i===0?today():'');field(2,`${people[i]} 이름`,496,y+28,78,19);signature(2,`${people[i]} 서명`,583,y+13,61,35);}
+const dialog=document.getElementById('signDialog'),pad=document.getElementById('signCanvas'),ctx=pad.getContext('2d');let active=null,drawing=false,hasInk=false;
+function openSignature(item){active=item;ctx.clearRect(0,0,pad.width,pad.height);hasInk=!!item.image;if(item.image)ctx.drawImage(item.image,0,0,pad.width,pad.height);document.getElementById('signTitle').textContent=item.label;dialog.showModal();}
+function point(e){const r=pad.getBoundingClientRect();return [(e.clientX-r.left)*pad.width/r.width,(e.clientY-r.top)*pad.height/r.height];}
+pad.onpointerdown=e=>{e.preventDefault();pad.setPointerCapture(e.pointerId);drawing=true;hasInk=true;const [x,y]=point(e);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+.1,y+.1);ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#111';ctx.stroke();};
+pad.onpointermove=e=>{if(!drawing)return;e.preventDefault();ctx.lineTo(...point(e));ctx.stroke();};pad.onpointerup=pad.onpointercancel=()=>{drawing=false;};
+document.getElementById('erase').onclick=()=>{ctx.clearRect(0,0,pad.width,pad.height);hasInk=false;};document.getElementById('cancelSign').onclick=()=>dialog.close();
+document.getElementById('applySign').onclick=async()=>{if(!hasInk){active.image=null;active.el.textContent='터치하여 서명';}else{const img=new Image();img.src=pad.toDataURL('image/png');await img.decode();active.image=img;active.el.replaceChildren(img.cloneNode());}dialog.close();};
+document.getElementById('clear').onclick=()=>{if(!confirm('입력과 서명을 모두 지울까요? 이미 저장한 PDF는 지워지지 않습니다.'))return;fields.forEach(f=>f.el.value=f.el.type==='date'&&(['1쪽 서명 날짜','임차인 날짜'].includes(f.label))?today():'');choices.forEach(c=>c.el.checked=false);signatures.forEach(s=>{s.image=null;s.el.textContent='터치하여 서명';});document.getElementById('status').textContent='입력과 서명을 초기화했습니다.';};
+function fitText(ctx,text,x,y,w,h){ctx.fillStyle='#111';let size=Math.min(12,h-3);do{ctx.font=`${size}px ConsentKorean, sans-serif`;if(ctx.measureText(text).width<=w-4)break;size-=.5;}while(size>5);ctx.textBaseline='middle';ctx.fillText(text,x+2,y+h/2,w-4);}
+async function renderPage(page){const img=document.querySelector(`#page${page}>img`);await img.decode();const canvas=document.createElement('canvas');canvas.width=2482;canvas.height=3508;const c=canvas.getContext('2d');c.fillStyle='white';c.fillRect(0,0,canvas.width,canvas.height);c.drawImage(img,0,0,canvas.width,canvas.height);c.scale(canvas.width/W,canvas.height/H);
+ fields.filter(f=>f.page===page).forEach(f=>{c.fillStyle='white';c.fillRect(f.x,f.y,f.w,f.h);const value=f.el.type==='date'?f.el.value.replaceAll('-','.'):f.el.value;fitText(c,value,f.x,f.y,f.w,f.h);});
+ choices.filter(f=>f.page===page).forEach(f=>{c.fillStyle='#fff';c.fillRect(f.x-1,f.y-1,11,11);c.strokeStyle='#333';c.lineWidth=.6;c.strokeRect(f.x,f.y,9,9);if(f.el.checked){c.beginPath();c.lineWidth=1.4;c.moveTo(f.x+1,f.y+4);c.lineTo(f.x+4,f.y+7);c.lineTo(f.x+8,f.y+1);c.stroke();}});
+ signatures.filter(s=>s.page===page).forEach(s=>{c.fillStyle=page===1?'white':'#eee';c.fillRect(s.x,s.y,s.w,s.h);if(s.image){const ratio=Math.min(s.w/s.image.width,s.h/s.image.height);const w=s.image.width*ratio,h=s.image.height*ratio;c.drawImage(s.image,s.x+(s.w-w)/2,s.y+(s.h-h)/2,w,h);}});return canvas;}
+// Minimal binary PDF writer: locally rasterized Unicode text and ink, two A4 pages.
+function makePDF(images){const enc=new TextEncoder(),chunks=[],offsets=[0];let length=0;function add(s){const bytes=typeof s==='string'?enc.encode(s):s;chunks.push(bytes);length+=bytes.length;}function object(id,body){offsets[id]=length;add(`${id} 0 obj\n`);body();add('\nendobj\n');}
+ add('%PDF-1.4\n');object(1,()=>add('<< /Type /Catalog /Pages 2 0 R >>'));object(2,()=>add('<< /Type /Pages /Count 2 /Kids [3 0 R 6 0 R] >>'));
+ images.forEach((im,i)=>{const id=3+i*3;object(id,()=>add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.89] /Resources << /XObject << /Im${i} ${id+1} 0 R >> >> /Contents ${id+2} 0 R >>`));object(id+1,()=>{add(`<< /Type /XObject /Subtype /Image /Width ${im.width} /Height ${im.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`);add(im.bytes);add('\nendstream');});const stream=`q\n595.276 0 0 841.89 0 0 cm\n/Im${i} Do\nQ\n`;object(id+2,()=>add(`<< /Length ${enc.encode(stream).length} >>\nstream\n${stream}endstream`));});
+ const start=length;add('xref\n0 9\n0000000000 65535 f \n');for(let i=1;i<=8;i++)add(`${String(offsets[i]).padStart(10,'0')} 00000 n \n`);add(`trailer\n<< /Size 9 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`);return new Blob(chunks,{type:'application/pdf'});}
+let downloadURL=null;document.getElementById('save').onclick=async()=>{const button=document.getElementById('save'),status=document.getElementById('status');button.disabled=true;status.textContent='PDF를 기기 안에서 만드는 중…';try{if(document.fonts){await document.fonts.load('12px ConsentKorean');await document.fonts.ready;}const images=[];for(let page=1;page<=2;page++){const canvas=await renderPage(page);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.97));if(!blob)throw Error('image');images.push({width:canvas.width,height:canvas.height,bytes:new Uint8Array(await blob.arrayBuffer())});canvas.width=canvas.height=1;}const blob=makePDF(images);if(downloadURL)URL.revokeObjectURL(downloadURL);downloadURL=URL.createObjectURL(blob);const a=document.createElement('a');a.href=downloadURL;a.download=`consent-${today()}.pdf`;a.textContent='PDF 다시 열기 / 저장';a.target='_blank';a.rel='noopener';status.replaceChildren('PDF 생성 완료. ',a);document.body.append(a);a.click();status.append(a); }catch(e){status.textContent='PDF 생성에 실패했습니다. 입력은 유지되어 있습니다. 다시 시도해 주세요.';}finally{button.disabled=false;}};
